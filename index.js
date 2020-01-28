@@ -7,33 +7,58 @@ const $ = require('cheerio');
 const PORT = process.env.PORT || 1234;
 const URL = process.env.URL || "https://gazzettadimantova.gelocal.it/mantova";
 
-function getTextsFromJQueryElements(jqueryObj, nstart, nend) {
-    return jqueryObj.slice(nstart, nend)
-        .map(function() {
-            return $(this).text();
-        })
-        .toArray();
+async function getLinesFromArticle(articleUrl) {
+    let html = await rp(articleUrl);
+    let lines = $(".entry_subtitle", html).text();
+
+    return lines;
 }
 
-app.get('/', async (req, res) => {
+function getArticleInfo(url) {
+    return new Promise(async (resolve, reject) => {
+        try {
+            let subtitle = await getLinesFromArticle(url);
+            resolve(subtitle);
+        }
+        catch(exc) {
+            reject(exc);
+        }
+    });
+}
+
+async function getInfoFromEntryTitle(jqueryObj, nstart, nend) {
+    return await Promise.all(
+            jqueryObj.slice(nstart, nend)
+            .map(function() {
+                let title = $(this).text();
+
+                let externalUrl = $(this).find('a').attr('href');
+                console.log(externalUrl);
+
+                return getArticleInfo(externalUrl).then(subtitle => {
+                    return {
+                        "title": title,
+                        "subtitle": subtitle
+                    }
+                })
+            }).toArray()
+        );
+}
+
+app.get('/news', async (req, res) => {
     try {
+        let nstart = parseInt(req.query.start);
+        let nend = parseInt(req.query.end);
+
         let html = await rp(URL);
-        //console.log(html);
 
-        let eyelets = getTextsFromJQueryElements($(".entry_eyelet", html), 0, 6);
-        let titles = getTextsFromJQueryElements($(".entry_title", html), 0, 6);
-
-        let articles = eyelets.map((cur, index) => {
-            return {
-                "eyelet": cur,
-                "title": titles[index]
-            }
-        });
+        let articles = await getInfoFromEntryTitle($(".entry_title", html), nstart, nend);
 
         res.json(articles);
     }
     catch (exc) {
         console.log(exc.message);
+        res.send(exc.message);
     }
 });
 
