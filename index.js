@@ -7,18 +7,17 @@ const $ = require('cheerio');
 const PORT = process.env.PORT || 1234;
 const URL = process.env.URL || "https://gazzettadimantova.gelocal.it/mantova";
 
-async function getLinesFromArticle(articleUrl) {
-    let html = await rp(articleUrl);
-    let lines = $(".entry_subtitle", html).text();
-
-    return lines;
-}
-
-function getArticleInfo(url) {
+function getArticleBodyPromise(url) {
     return new Promise(async (resolve, reject) => {
         try {
-            let subtitle = await getLinesFromArticle(url);
-            resolve(subtitle);
+            let html = await rp(url);
+            let subtitle = $(".entry_subtitle", html).text();
+            let firstParagraph = $("#article-body", html).text();
+
+            resolve({
+                subtitle: subtitle,
+                firstParagraph: firstParagraph
+            });
         }
         catch(exc) {
             reject(exc);
@@ -28,21 +27,24 @@ function getArticleInfo(url) {
 
 async function getInfoFromEntryTitle(jqueryObj, nstart, nend) {
     return await Promise.all(
-            jqueryObj.slice(nstart, nend)
-            .map(function() {
-                let title = $(this).text();
+        jqueryObj.slice(nstart, nend)
+        .map(function() {
+            let title = $(this).text();
 
-                let externalUrl = $(this).find('a').attr('href');
-                console.log(externalUrl);
+            let externalUrl = $(this).find('a').attr('href');
+            console.log(externalUrl);
 
-                return getArticleInfo(externalUrl).then(subtitle => {
-                    return {
-                        "title": title,
-                        "subtitle": subtitle
-                    }
-                })
-            }).toArray()
-        );
+            return getArticleBodyPromise(externalUrl).then(body => {
+                return {
+                    title: title,
+                    subtitle: body.subtitle,
+                    firstParagraph: body.firstParagraph
+                }
+            }).catch(err => {
+                throw new Error(err.message);
+            })
+        }).toArray()
+    );
 }
 
 app.get('/news', async (req, res) => {
