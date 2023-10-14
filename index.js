@@ -7,19 +7,23 @@ const $ = require('cheerio');
 const PORT = process.env.PORT || 1234;
 const URL = process.env.URL || "https://gazzettadimantova.gelocal.it/mantova";
 
+function sanitizeText(text) {
+    return text.replaceAll('\n', '').replaceAll('\t', '').replaceAll(/\s{2,}/g, '').replaceAll(/<img src=.*?>/g, '')
+}
+
 function getArticleBodyPromise(url) {
     return new Promise(async (resolve, reject) => {
         try {
             let html = await rp(url);
-            let subtitle = $(".entry_subtitle", html).text();
-            let firstParagraph = $("#article-body", html).text();
+            let subtitle = $(".story__hero__summary", html).text();
+            let firstParagraph = $(".story__text", html).text();
 
             resolve({
-                subtitle: subtitle,
-                firstParagraph: firstParagraph
+                subtitle: sanitizeText(subtitle),
+                firstParagraph: sanitizeText(firstParagraph)
             });
         }
-        catch(exc) {
+        catch (exc) {
             reject(exc);
         }
     });
@@ -28,22 +32,22 @@ function getArticleBodyPromise(url) {
 async function getInfoFromEntryTitle(jqueryObj, nstart, nend) {
     return await Promise.all(
         jqueryObj.slice(nstart, nend)
-        .map(function() {
-            let title = $(this).text();
+            .map(function () {
+                let title = $(this).text();
 
-            let externalUrl = $(this).find('a').attr('href');
-            console.log(externalUrl);
+                let externalUrl = $(this).find('a').attr('href');
+                console.log(externalUrl);
 
-            return getArticleBodyPromise(externalUrl).then(body => {
-                return {
-                    title: title,
-                    subtitle: body.subtitle,
-                    firstParagraph: body.firstParagraph
-                }
-            }).catch(err => {
-                throw new Error(err.message);
-            })
-        }).toArray()
+                return getArticleBodyPromise(externalUrl).then(body => {
+                    return {
+                        title: sanitizeText(title),
+                        subtitle: body.subtitle,
+                        firstParagraph: body.firstParagraph
+                    }
+                }).catch(err => {
+                    throw new Error(err.message);
+                })
+            }).toArray()
     );
 }
 
@@ -54,7 +58,7 @@ app.get('/news', async (req, res) => {
 
         let html = await rp(URL);
 
-        let articles = await getInfoFromEntryTitle($(".entry_title", html), nstart, nend);
+        let articles = await getInfoFromEntryTitle($(".entry__title", html), nstart, nend);
 
         res.json(articles);
     }
